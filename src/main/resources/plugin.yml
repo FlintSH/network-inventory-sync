@@ -1,0 +1,13 @@
+name: NetworkInventorySync
+version: '${project.version}'
+main: dev.flint.invsync.InventorySync
+api-version: '26.1.2'
+authors: [FlintSH]
+description: Transactional inventory handoffs for Paper and Purpur 26.1.2.
+commands:
+  invsync:
+    description: Inspect inventory synchronization and recover orphaned sessions.
+    usage: /invsync status|inspect|history|recover|restore|replay
+permissions:
+  invsync.admin:
+    default: op

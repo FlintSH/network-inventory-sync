@@ -1,0 +1,59 @@
+# Network Inventory Sync. Restart to apply changes; settings are immutable per process.
+config-version: 1
+# MUST be unique per backend. Servers in the same group share the same flags/version/database.
+server-id: change-me
+group: survival
+database:
+  host: 127.0.0.1
+  port: 5432
+  name: invsync
+  username: invsync
+  password: ''
+  # If non-empty, this environment variable is REQUIRED and takes precedence over password.
+  password-env: ''
+  ssl-mode: require
+  # Optional CA file for verify-ca/verify-full; otherwise the driver default applies.
+  ssl-root-cert: ''
+  table-prefix: invsync_
+  pool-size: 8
+  connection-timeout-ms: 3000
+  query-timeout-seconds: 5
+sync:
+  # Storage includes hotbar. Armour and offhand are separately configurable.
+  storage: true
+  armour: true
+  offhand: true
+  ender-chest: true
+  experience: true
+  selected-slot: true
+  health: false
+  hunger: false
+  # A new player imports inventory from the FIRST participating backend they join.
+  # empty starts with empty enabled inventory fields, 0 XP and default enabled vitals.
+  first-join: import
+safety:
+  login-wait-ms: 8000
+  login-poll-ms: 200
+  pending-login-seconds: 45
+  heartbeat-seconds: 5
+  verification-timeout-seconds: 20
+  # No automatic expiry/takeover. Admin recovery is console-only, stale and revision-confirmed.
+  recovery-stale-seconds: 120
+  max-payload-bytes: 4194304
+  history-limit: 20
+  shutdown-wait-seconds: 15
+performance:
+  io-threads: 4
+  io-queue-capacity: 1024
+  autosave-seconds: 30
+  # Main-thread NBT captures per tick; spread large servers across ticks.
+  autosave-batch-size: 4
+messages:
+  # MiniMessage responses. Commands/fields are deliberately not player-substitutable.
+  loading: '<yellow>Your inventory is synchronizing. Please wait.'
+  not-ready: '<red>Inventory storage is starting or unavailable. Please retry shortly.'
+  busy: '<red>Your inventory is still active on another server. Wait a moment and reconnect. Contact staff if this persists.'
+  failed: '<red>Inventory synchronization failed. Your session is locked for safety; contact staff.'
+  mismatch: '<red>These servers use incompatible inventory settings or Minecraft versions. Contact staff.'
+  shutdown: '<yellow>This server is stopping inventory sync. Please reconnect after it is ready.'
+  no-permission: '<red>You do not have permission.'

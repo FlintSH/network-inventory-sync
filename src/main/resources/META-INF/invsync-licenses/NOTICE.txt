@@ -1,0 +1,6 @@
+Network Inventory Sync bundles isolated copies of:
+HikariCP 7.1.0 — Brett Wooldridge and contributors — Apache License 2.0.
+PostgreSQL JDBC 42.7.14 — PostgreSQL Global Development Group and contributors — BSD 2-clause.
+Checker Framework qualifier annotations — Checker Framework developers — MIT.
+These are relocated under dev.flint.invsync.lib; full licenses accompany this notice.
+Paper, Adventure, SLF4J and test libraries are not bundled.
