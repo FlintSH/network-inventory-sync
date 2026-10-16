@@ -23,7 +23,7 @@ public final class InventoryProbe extends JavaPlugin {
     @Override public void onEnable(){target=Bukkit.getPluginManager().getPlugin("NetworkInventorySync");waitFor(()->Boolean.TRUE.equals(field(target,"ready")),()->{
         Fake first=new Fake(id);seed(first);enter(first,()->{
             check(!blocked(first),"ready player frozen");first.main[7]=new ItemStack(Material.DIAMOND,32);
-            leave(first,()->{Fake second=new Fake(id);second.main[0]=new ItemStack(Material.STONE);enter(second,()->{
+            leave(first,()->{Fake second=new Fake(id);second.dead=true;second.main[0]=new ItemStack(Material.STONE);enter(second,()->{
                 check(second.main[0].isSimilar(first.main[0]),"NBT sword mismatch");check(second.main[7].getAmount()==32,"latest quit snapshot lost");
                 check(second.armour[2].getType()==Material.DIAMOND_CHESTPLATE,"armour missing");check(second.hand.getType()==Material.TOTEM_OF_UNDYING,"offhand missing");
                 check(second.ender[4].getAmount()==17,"ender chest missing");check(second.health==13.5&&second.food==17&&second.saturation==4&&second.exhaustion==2,"optional vitals missing");
@@ -31,7 +31,16 @@ public final class InventoryProbe extends JavaPlugin {
                 check(second.level==17&&second.xp==.5f&&second.total==321&&second.selected==8,"experience/selection missing");
                 check(second.main[0].getItemMeta().getPersistentDataContainer().get(new NamespacedKey("invsync","proof"),PersistentDataType.STRING).equals("retained"),"PDC missing");
                 ShulkerBox box=(ShulkerBox)((BlockStateMeta)second.main[3].getItemMeta()).getBlockState();check(box.getInventory().getItem(9).getAmount()==17,"nested container missing");
-                leave(second,()->{getLogger().info("INVSYNC_PROBE_OK: lifecycle, freeze, latest snapshot, NBT/PDC, nested items, armour/offhand, ender chest, XP and selection");Bukkit.shutdown();});
+                // Simulate vanilla clearing storage after an ordinary death. A normal
+                // respawn must not replay the older database snapshot and resurrect drops.
+                second.main=new ItemStack[36];
+                call("respawn",PlayerRespawnEvent.class,new PlayerRespawnEvent(second.player,new Location(Bukkit.getWorlds().getFirst(),0,64,0),false));
+                Bukkit.getScheduler().runTaskLater(this,()->{
+                    try{
+                        check(second.main[0]==null&&second.main[7]==null,"normal respawn resurrected pre-death items");
+                        leave(second,()->{getLogger().info("INVSYNC_PROBE_OK: lifecycle, death-screen/respawn, freeze, latest snapshot, NBT/PDC, nested items, armour/offhand, ender chest, XP and selection");Bukkit.shutdown();});
+                    }catch(Throwable e){fail(e);}
+                },3L);
             });});
         });
     });}
@@ -48,6 +57,14 @@ public final class InventoryProbe extends JavaPlugin {
                 Bukkit.getScheduler().runTask(this,()->{
                     try{check(blocked(fake),"pending player not frozen");call("join",PlayerJoinEvent.class,new PlayerJoinEvent(fake.player,Component.empty()));
                         Item item=proxy(Item.class,(p,m,a)->defaultValue(m.getReturnType()));var drop=new PlayerDropItemEvent(fake.player,item);Bukkit.getPluginManager().callEvent(drop);check(drop.isCancelled(),"loading item drop permitted");
+                        if(fake.dead)Bukkit.getScheduler().runTaskLater(this,()->{
+                            try{
+                                check(blocked(fake)&&"LOADING".equals(phase()),"dead login activated too early");
+                                check(fake.main[0].getType()==Material.STONE,"dead login applied inventory before respawn");
+                                fake.dead=false;
+                                call("respawn",PlayerRespawnEvent.class,new PlayerRespawnEvent(fake.player,new Location(Bukkit.getWorlds().getFirst(),0,64,0),false));
+                            }catch(Throwable e){fail(e);}
+                        },3L);
                         waitFor(()->"READY".equals(phase()),ready);
                     }catch(Throwable e){fail(e);}
                 });
@@ -67,7 +84,7 @@ public final class InventoryProbe extends JavaPlugin {
     static Object defaultValue(Class<?> type){if(!type.isPrimitive())return null;if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;if(type==float.class)return 0f;if(type==double.class)return 0d;if(type==short.class)return (short)0;if(type==byte.class)return (byte)0;if(type==char.class)return (char)0;return null;}
     static final class Fake {
         ItemStack[] main=new ItemStack[36],armour=new ItemStack[4],ender=new ItemStack[27];ItemStack hand=new ItemStack(Material.AIR),cursor=new ItemStack(Material.AIR);
-        int level,total,selected,food=20;float xp,saturation=5,exhaustion;double health=20;boolean online=true;final Player player;
+        int level,total,selected,food=20;float xp,saturation=5,exhaustion;double health=20;boolean online=true,dead;final Player player;
         Fake(UUID id){
             Inventory chest=proxy(Inventory.class,(p,m,a)->switch(m.getName()){case "getContents"->ender;case "setContents"->{ender=((ItemStack[])a[0]).clone();yield null;}default->defaultValue(m.getReturnType());});
             PlayerInventory inventory=proxy(PlayerInventory.class,(p,m,a)->switch(m.getName()){
@@ -78,7 +95,7 @@ public final class InventoryProbe extends JavaPlugin {
                 case "addItem"->{Map<Integer,ItemStack> leftover=new HashMap<>();ItemStack[] input=(ItemStack[])a[0];for(int x=0;x<input.length;x++){int free=-1;for(int i=0;i<36;i++)if(main[i]==null||main[i].getType().isAir()){free=i;break;}if(free<0)leftover.put(x,input[x]);else main[free]=input[x];}yield leftover;}
                 default->defaultValue(m.getReturnType());});
             player=proxy(Player.class,(p,m,a)->switch(m.getName()){
-                case "getUniqueId"->id;case "getName"->"ProbeUser";case "isOnline"->online;case "getInventory"->inventory;case "getEnderChest"->chest;
+                case "isDead"->dead;case "getUniqueId"->id;case "getName"->"ProbeUser";case "isOnline"->online;case "getInventory"->inventory;case "getEnderChest"->chest;
                 case "getItemOnCursor"->cursor;case "setItemOnCursor"->{cursor=a[0]==null?new ItemStack(Material.AIR):(ItemStack)a[0];yield null;}
                 case "getLevel"->level;case "setLevel"->{level=(int)a[0];yield null;}case "getExp"->xp;case "setExp"->{xp=(float)a[0];yield null;}
                 case "getTotalExperience"->total;case "setTotalExperience"->{total=(int)a[0];yield null;}case "getMaxHealth"->20d;case "getHealth"->health;case "setHealth"->{health=(double)a[0];yield null;}

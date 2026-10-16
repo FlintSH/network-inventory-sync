@@ -27,6 +27,12 @@ final class Store implements AutoCloseable {
     private PreparedStatement statement(Connection c, String sql) throws SQLException { var p = c.prepareStatement(sql); p.setQueryTimeout(options.queryTimeout()); return p; }
     void initialize(String minecraftVersion) throws SQLException {
         try (Connection c = pool.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+            // Serialize first-time PostgreSQL catalog creation across starting backends.
+            try (var lock = statement(c,"SELECT pg_advisory_xact_lock(1313428307, hashtext(?))")) {
+                lock.setString(1,options.prefix());lock.execute();
+            }
             try (Statement s = c.createStatement()) {
                 s.setQueryTimeout(options.queryTimeout());
                 s.execute("CREATE TABLE IF NOT EXISTS "+groups+" (group_id VARCHAR(64) PRIMARY KEY, minecraft VARCHAR(32) NOT NULL, profile CHAR(64) NOT NULL)");
@@ -37,6 +43,8 @@ final class Store implements AutoCloseable {
             try (var p = statement(c,"SELECT minecraft,profile FROM "+groups+" WHERE group_id=?")) {
                 p.setString(1,options.group()); try (var r=p.executeQuery()) { if (!r.next() || !r.getString(1).equals(minecraftVersion) || !r.getString(2).equals(options.profile())) throw new Incompatible(); }
             }
+            c.commit();
+            } catch(SQLException e) { c.rollback();throw e; }
         }
     }
     Acquired acquire(UUID player) throws SQLException {

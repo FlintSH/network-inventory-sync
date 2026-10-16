@@ -68,16 +68,33 @@ public final class InventorySync extends JavaPlugin implements Listener,CommandE
         Player player=event.getPlayer();Session s=sessions.get(player.getUniqueId());
         if(s==null||s.phase!=Session.Phase.PENDING){player.kick(message("failed"));return;}
         s.bound=player;s.phase=Session.Phase.LOADING;
-        Bukkit.getScheduler().runTask(this,()->{
-            if(stopping||!player.isOnline()||s.phase!=Session.Phase.LOADING)return;
-            try{
-                if(s.payload!=null)Snapshot.decode(s.payload,options,minecraft).apply(player,options);
-                else if(!options.importFirst())Snapshot.empty().apply(player,options);
-                s.applied=true;
-                byte[] snapshot=Snapshot.capture(player,options).encode(options,minecraft);s.payload=snapshot;
-                persist(s,snapshot,false,true);
-            }catch(Exception e){fail(s,"Cannot load item snapshot: "+e.getClass().getSimpleName());}
-        });
+        Bukkit.getScheduler().runTask(this,()->load(s,player));
+    }
+    private void load(Session s,Player player){
+        if(stopping||!player.isOnline()||s.phase!=Session.Phase.LOADING||s.applied)return;
+        // A backend may retain a death screen from an earlier visit. Respawn can replace
+        // the inventory, so restore authoritative items only after that transition.
+        if(player.isDead()){s.waitingForRespawn=true;return;}
+        s.waitingForRespawn=false;
+        try{
+            if(s.payload!=null)Snapshot.decode(s.payload,options,minecraft).apply(player,options);
+            else if(!options.importFirst())Snapshot.empty().apply(player,options);
+            s.applied=true;
+            byte[] snapshot=Snapshot.capture(player,options).encode(options,minecraft);s.payload=snapshot;
+            persist(s,snapshot,false,true);
+        }catch(Exception e){fail(s,"Cannot load item snapshot: "+e.getClass().getSimpleName());}
+    }
+    @EventHandler(priority=EventPriority.MONITOR)
+    public void respawn(PlayerRespawnEvent event){
+        Session s=sessions.get(event.getPlayer().getUniqueId());
+        if(s==null||(s.phase!=Session.Phase.READY&&s.phase!=Session.Phase.LOADING))return;
+        s.bound=event.getPlayer();
+        if(s.phase==Session.Phase.LOADING&&s.waitingForRespawn){
+            s.waitingForRespawn=false;
+            Bukkit.getScheduler().runTask(this,()->load(s,event.getPlayer()));
+        }
+        // Ordinary deaths after activation use vanilla drops/keepInventory. Never replay
+        // an old pre-death autosave on normal respawn: that would duplicate dropped items.
     }
     @EventHandler(priority=EventPriority.MONITOR)
     public void quit(PlayerQuitEvent event){

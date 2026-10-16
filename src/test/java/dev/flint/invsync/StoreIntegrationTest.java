@@ -60,4 +60,15 @@ class StoreIntegrationTest {
         assertThrows(Store.Fenced.class,()->a.recover(player,0));a.recover(player,1);assertEquals(1,a.inspect(player).revision());
         var next=b.acquire(player);assertThrows(Store.Fenced.class,()->a.recover(player,1));b.abandon(player,next.token());
     }
+    @Test void twoServersCanInitializeOneBrandNewSchemaConcurrently()throws Exception{
+        String fresh=prefix+"boot_";
+        try(Store first=new Store(Fixtures.databaseOptions(fresh,"first","survival"));Store second=new Store(Fixtures.databaseOptions(fresh,"second","survival"))){
+            var executor=Executors.newFixedThreadPool(2);var gate=new CountDownLatch(1);
+            try{
+                Future<?> x=executor.submit(()->{try{gate.await();first.initialize("26.1.2");}catch(Exception e){throw new RuntimeException(e);}});
+                Future<?> y=executor.submit(()->{try{gate.await();second.initialize("26.1.2");}catch(Exception e){throw new RuntimeException(e);}});
+                gate.countDown();x.get(10,TimeUnit.SECONDS);y.get(10,TimeUnit.SECONDS);
+            }finally{executor.shutdownNow();}
+        }finally{try(var c=connection();var statement=c.createStatement()){statement.execute("DROP TABLE IF EXISTS "+fresh+"history,"+fresh+"players,"+fresh+"groups");}}
+    }
 }

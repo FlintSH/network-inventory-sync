@@ -16,7 +16,7 @@ final class Session {
     volatile long verified=System.nanoTime();
     volatile Player bound;
     volatile io.papermc.paper.connection.PlayerLoginConnection connection;
-    volatile boolean applied;
+    volatile boolean applied,waitingForRespawn;
     final AtomicBoolean saving=new AtomicBoolean(),heartbeating=new AtomicBoolean();
     private CompletableFuture<Void> tail=CompletableFuture.completedFuture(null);
     Session(UUID player){this.player=player;}
