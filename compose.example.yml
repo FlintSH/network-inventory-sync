@@ -1,8 +1,10 @@
-# Local development only. PostgreSQL binds loopback and has no TLS in this example.
+# Local development only. Choose ONE engine; both bind loopback without TLS.
 # export INVSYNC_DB_PASSWORD='choose-a-local-password'
-# docker compose -f compose.example.yml up -d
+# docker compose -f compose.example.yml --profile postgresql up -d
+# or: docker compose -f compose.example.yml --profile mariadb up -d
 services:
   postgres:
+    profiles: [postgresql]
     image: postgres:17
     restart: unless-stopped
     environment:
@@ -18,5 +20,25 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+  mariadb:
+    profiles: [mariadb]
+    image: mariadb:10.11
+    restart: unless-stopped
+    command: ['--max-allowed-packet=64M', '--innodb-flush-log-at-trx-commit=1']
+    environment:
+      MARIADB_DATABASE: invsync
+      MARIADB_USER: invsync
+      MARIADB_PASSWORD: ${INVSYNC_DB_PASSWORD:?Set INVSYNC_DB_PASSWORD first}
+      MARIADB_RANDOM_ROOT_PASSWORD: 'yes'
+    ports:
+      - '127.0.0.1:3306:3306'
+    volumes:
+      - invsync-mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 5s
+      retries: 12
 volumes:
   invsync-data:
+  invsync-mariadb-data:

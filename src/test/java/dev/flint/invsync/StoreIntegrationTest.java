@@ -11,10 +11,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class StoreIntegrationTest {
     String prefix;Options options;Store a,b;
     @BeforeEach void setup()throws Exception{prefix="t"+UUID.randomUUID().toString().replace("-","").substring(0,12)+"_";options=Fixtures.databaseOptions(prefix,"server-a","survival");a=new Store(options);b=new Store(Fixtures.databaseOptions(prefix,"server-b","survival"));a.initialize("26.1.2");b.initialize("26.1.2");}
-    Connection connection()throws SQLException{return DriverManager.getConnection("jdbc:postgresql://"+options.host()+":"+options.port()+"/"+options.database(),options.username(),options.password());}
-    @AfterEach void close()throws Exception{a.close();b.close();try(var c=connection();var s=c.createStatement()){s.execute("DROP TABLE "+prefix+"history,"+prefix+"players,"+prefix+"groups");}}
+    Connection connection()throws SQLException{return DriverManager.getConnection(options.engine().jdbcUrl(options),options.username(),options.password());}
+    @AfterEach void close()throws Exception{if(a!=null)a.close();if(b!=null)b.close();try(var c=connection();var s=c.createStatement()){s.execute("DROP TABLE IF EXISTS "+prefix+"history,"+prefix+"players,"+prefix+"groups");}}
     byte[] payload()throws Exception{return Snapshot.empty().encode(options,"26.1.2");}
-    void stale(UUID player)throws Exception{try(var c=connection();var p=c.prepareStatement("UPDATE "+prefix+"players SET last_seen=CURRENT_TIMESTAMP-INTERVAL '1 hour' WHERE player_id=?")){p.setString(1,player.toString());p.executeUpdate();}}
+    void stale(UUID player)throws Exception{try(var c=connection();var p=c.prepareStatement("UPDATE "+prefix+"players SET last_seen="+(options.engine()==DatabaseEngine.POSTGRESQL?"CURRENT_TIMESTAMP-INTERVAL '1 hour'":"CURRENT_TIMESTAMP(6)-INTERVAL 1 HOUR")+" WHERE player_id=?")){p.setString(1,player.toString());p.executeUpdate();}}
     @Test void cleanHandoffIsAtomicAndOldTokenCannotOverwriteNextServer()throws Exception{
         UUID player=UUID.randomUUID();var first=a.acquire(player);assertNull(first.payload());assertThrows(Store.Busy.class,()->b.acquire(player));
         assertEquals(1,a.save(player,first.token(),0,payload(),true));var second=b.acquire(player);assertEquals(1,second.revision());assertArrayEquals(payload(),second.payload());
@@ -23,6 +23,33 @@ class StoreIntegrationTest {
     @Test void exactlyOneConcurrentAcquirerWins()throws Exception{
         UUID player=UUID.randomUUID();var pool=Executors.newFixedThreadPool(2);var gate=new CountDownLatch(1);
         try{Callable<Boolean> acquire=()->{gate.await();try{a.acquire(player);return true;}catch(Store.Busy e){return false;}};Future<Boolean> x=pool.submit(acquire),y=pool.submit(acquire);gate.countDown();assertNotEquals(x.get(),y.get());}finally{pool.shutdownNow();}
+    }
+    @Test void binaryPayloadAtConfiguredLimitSurvivesHandoffAndOversizeIsRejected()throws Exception{
+        UUID player=UUID.randomUUID();var first=a.acquire(player);
+        byte[] large=new byte[options.maxPayload()];new Random(42).nextBytes(large);
+        assertThrows(SQLException.class,()->a.save(player,first.token(),0,new byte[options.maxPayload()+1],true));
+        assertEquals(0,a.inspect(player).revision());assertEquals(first.token().toString(),a.inspect(player).token());
+        a.save(player,first.token(),0,large,true);var next=b.acquire(player);
+        assertArrayEquals(large,next.payload());assertArrayEquals(large,b.historyPayload(player,1));b.abandon(player,next.token());
+    }
+    @Test void groupsRemainCaseSensitiveEvenOnCaseInsensitiveDatabaseDefaults()throws Exception{
+        try(Store other=new Store(Fixtures.databaseOptions(prefix,"third","Survival"))){
+            other.initialize("26.1.2");UUID player=UUID.randomUUID();a.acquire(player);assertNotNull(other.acquire(player));
+        }
+    }
+    @Test void repeatedHeartbeatsKeepMatchingOwnerAndResetDatabaseAge()throws Exception{
+        UUID player=UUID.randomUUID();var first=a.acquire(player);stale(player);assertTrue(a.inspect(player).staleSeconds()>=3590);
+        for(int i=0;i<20;i++)a.heartbeat(player,first.token());assertTrue(a.inspect(player).staleSeconds()<5);
+        assertThrows(Store.Fenced.class,()->b.heartbeat(player,UUID.randomUUID()));assertThrows(Store.Fenced.class,()->b.recover(player,0));
+    }
+    @Test void mariaRejectsExistingNonTransactionalTables()throws Exception{
+        if(options.engine()!=DatabaseEngine.MARIADB)return;
+        try(var c=connection();var s=c.createStatement()){s.execute("ALTER TABLE "+prefix+"history ENGINE=MyISAM");}
+        assertThrows(SQLException.class,()->a.initialize("26.1.2"));
+    }
+    @Test void failedGroupInitializationDoesNotHoldTheMariaBootstrapLock()throws Exception{
+        // Run on both engines: a rejected profile must not block the next initializer.
+        assertThrows(Store.Incompatible.class,()->a.initialize("different"));b.initialize("26.1.2");
     }
     @Test void staleOwnerIsNeverAutomaticallyTakenOverAndRecoveryIsRevisionFenced()throws Exception{
         UUID player=UUID.randomUUID();var first=a.acquire(player);a.save(player,first.token(),0,payload(),false);
@@ -38,7 +65,7 @@ class StoreIntegrationTest {
     }
     @Test void versionAndProfileMismatchRefuseInitializationAndGroupsAreIsolated()throws Exception{
         assertThrows(Store.Incompatible.class,()->b.initialize("26.2"));
-        var c=Fixtures.configuration();c.set("server-id","third");c.set("database.host",options.host());c.set("database.port",options.port());c.set("database.name",options.database());c.set("database.username",options.username());c.set("database.password",options.password());c.set("database.ssl-mode","disable");c.set("database.table-prefix",prefix);c.set("sync.health",true);
+        var c=Fixtures.configuration();c.set("server-id","third");c.set("database.type",options.engine().name().toLowerCase(Locale.ROOT));c.set("database.host",options.host());c.set("database.port",options.port());c.set("database.name",options.database());c.set("database.username",options.username());c.set("database.password",options.password());c.set("database.ssl-mode","disable");c.set("database.table-prefix",prefix);c.set("sync.health",true);
         try(Store mismatch=new Store(Options.read(c))){assertThrows(Store.Incompatible.class,()->mismatch.initialize("26.1.2"));}
         try(Store other=new Store(Fixtures.databaseOptions(prefix,"third","creative"))){other.initialize("26.1.2");UUID player=UUID.randomUUID();a.acquire(player);assertNotNull(other.acquire(player));}
     }

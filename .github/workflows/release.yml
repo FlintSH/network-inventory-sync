@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   test:
-    name: Paper 26.1.2 / PostgreSQL 17 / Java 25
+    name: Paper 26.1.2 / PostgreSQL 17 + MariaDB 10.11 / Java 25
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -23,6 +23,17 @@ jobs:
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U invsync -d invsync"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_DATABASE: invsync
+          MARIADB_USER: invsync
+          MARIADB_PASSWORD: invsync-test-only
+          MARIADB_ROOT_PASSWORD: root-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       INVSYNC_TEST_DATABASE: invsync
@@ -41,17 +52,28 @@ jobs:
         run: mvn -B -ntp org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="1.0.${GITHUB_RUN_NUMBER}" -DgenerateBackupPoms=false
       - name: Unit and real PostgreSQL integration tests
         run: mvn -B -ntp clean verify dependency:build-classpath -Dmdep.outputFile=target/test-classpath.txt
-      - name: Real Paper NBT and inventory lifecycle probe
+      - name: Real MariaDB concurrency, fencing and rollback tests
+        env:
+          INVSYNC_TEST_TYPE: mariadb
+          INVSYNC_TEST_PORT: '3306'
+        run: mvn -B -ntp test -Dtest=StoreIntegrationTest
+      - name: Real Paper NBT and PostgreSQL inventory lifecycle probe
+        run: python3 scripts/smoke.py "target/network-inventory-sync-1.0.${GITHUB_RUN_NUMBER}.jar"
+      - name: Real Paper NBT and MariaDB inventory lifecycle probe
+        env:
+          INVSYNC_TEST_TYPE: mariadb
+          INVSYNC_TEST_PORT: '3306'
         run: python3 scripts/smoke.py "target/network-inventory-sync-1.0.${GITHUB_RUN_NUMBER}.jar"
       - name: Checksum tested artifact
         working-directory: target
-        run: sha256sum network-inventory-sync-*.jar > SHA256SUMS
+        run: sha256sum network-inventory-sync-*.jar mariadb-java-client-*-sources.jar > SHA256SUMS
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: inventory-sync-${{ github.run_number }}
           overwrite: true
           path: |
             target/network-inventory-sync-*.jar
+            target/mariadb-java-client-*-sources.jar
             target/SHA256SUMS
   release:
     name: Publish tested commit release
@@ -77,4 +99,4 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --target "$GITHUB_SHA" --title "Network Inventory Sync 1.0.${GITHUB_RUN_NUMBER}" --prerelease --generate-notes
           fi
-          gh release upload "$tag" target/network-inventory-sync-*.jar target/SHA256SUMS --clobber
+          gh release upload "$tag" target/network-inventory-sync-*.jar target/mariadb-java-client-*-sources.jar target/SHA256SUMS --clobber

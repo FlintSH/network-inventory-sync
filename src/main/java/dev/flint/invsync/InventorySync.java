@@ -23,6 +23,19 @@ public final class InventorySync extends JavaPlugin implements Listener,CommandE
     private String minecraft;
     private final ArrayDeque<UUID> autosaveQueue=new ArrayDeque<>();
     private long nextAutosave;
+    /**
+     * Integration hook for actions such as cross-server teleport arrival. Returns true
+     * only for a bound, online session whose initial save and current ownership have
+     * been verified. Safe to call from any thread, but returns false off the Paper main
+     * thread so no Bukkit player state is read asynchronously. Recheck immediately
+     * before the action; this result does not reserve ownership for future ticks.
+     */
+    public boolean isReady(UUID playerId) {
+        if (!Bukkit.isPrimaryThread() || !ready || stopping || options == null || playerId == null) return false;
+        Session session = sessions.get(playerId);
+        return session != null && session.phase == Session.Phase.READY && session.fresh(options)
+            && session.bound != null && session.bound.isOnline() && playerId.equals(session.bound.getUniqueId());
+    }
     @Override public void onEnable(){
         // Keep the login gate active even when configuration/storage initialization fails.
         Bukkit.getPluginManager().registerEvents(this,this);

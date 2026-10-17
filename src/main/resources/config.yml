@@ -4,15 +4,19 @@ config-version: 1
 server-id: change-me
 group: survival
 database:
+  # postgresql (existing/default) or mariadb. Set port explicitly when changing type.
+  type: postgresql
   host: 127.0.0.1
+  # PostgreSQL: 5432; MariaDB: 3306.
   port: 5432
   name: invsync
   username: invsync
   password: ''
   # If non-empty, this environment variable is REQUIRED and takes precedence over password.
   password-env: ''
+  # Both engines: disable, require (encryption only), verify-ca, verify-full (recommended).
   ssl-mode: require
-  # Optional CA file for verify-ca/verify-full; otherwise the driver default applies.
+  # Optional trusted CA/server certificate file for verify-ca/verify-full.
   ssl-root-cert: ''
   table-prefix: invsync_
   pool-size: 8

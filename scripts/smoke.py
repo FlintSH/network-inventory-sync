@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Real Paper 26.1.2 + PostgreSQL probe; isolated loopback server, controlled player doubles.
-Requires a throwaway PostgreSQL DB via INVSYNC_TEST_* and a Maven-built test classpath.
+"""Real Paper 26.1.2 + PostgreSQL/MariaDB probe; isolated loopback server, player doubles.
+Requires a throwaway DB via INVSYNC_TEST_* and a Maven-built test classpath.
 The ephemeral server accepts Mojang's server EULA for this automated test.
 """
 import hashlib
@@ -38,6 +38,7 @@ with tempfile.TemporaryDirectory(prefix="invsync-paper-") as temp:
     config=(root/"src/main/resources/config.yml").read_text()
     config=config.replace("server-id: change-me","server-id: probe")
     config=config.replace("group: survival","group: probe")
+    config=config.replace("type: postgresql","type: "+os.getenv("INVSYNC_TEST_TYPE","postgresql"))
     config=config.replace("host: 127.0.0.1","host: "+os.getenv("INVSYNC_TEST_HOST","127.0.0.1"))
     config=config.replace("port: 5432","port: "+os.getenv("INVSYNC_TEST_PORT","55432"))
     config=config.replace("name: invsync","name: "+os.getenv("INVSYNC_TEST_DATABASE","invsync"))
@@ -70,7 +71,7 @@ with tempfile.TemporaryDirectory(prefix="invsync-paper-") as temp:
         log="".join(lines)
         assert "INVSYNC_PROBE_OK" in log and "INVSYNC_PROBE_FAILED" not in log,"Probe failed"
         assert process.returncode==0,f"Paper exited {process.returncode}"
-        print("PASS: real Paper 26.1.2 startup, item NBT/PDC, freeze and database handoff lifecycle")
+        print("PASS: real Paper 26.1.2 startup, item NBT/PDC, readiness hook, freeze and "+os.getenv("INVSYNC_TEST_TYPE","postgresql")+" handoff lifecycle")
     finally:
         if process.poll() is None:process.kill();process.wait()
         print("".join(lines))

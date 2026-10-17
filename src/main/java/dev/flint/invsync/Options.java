@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 
-record Options(String server, String group, String host, int port, String database, String username, String password,
+record Options(String server, String group, DatabaseEngine engine, String host, int port, String database, String username, String password,
                String ssl, String sslRootCert, String prefix, int poolSize, int connectionTimeout, int queryTimeout,
                boolean storage, boolean armour, boolean offhand, boolean ender, boolean experience, boolean selected, boolean health, boolean hunger,
                boolean importFirst, int loginWait, int loginPoll, int pendingSeconds, int heartbeatSeconds, int verificationSeconds,
@@ -31,7 +31,7 @@ record Options(String server, String group, String host, int port, String databa
         if (verify < heartbeat * 3) throw new IllegalArgumentException("verification-timeout-seconds must be at least 3 heartbeats");
         int pending = integer(c, "safety.pending-login-seconds", 15, 300), stale = integer(c, "safety.recovery-stale-seconds", 30, 86400);
         if (stale <= pending || stale <= verify * 2) throw new IllegalArgumentException("Recovery staleness must exceed pending-login and twice verification timeout");
-        return new Options(server, group, host, integer(c,"database.port",1,65535), db, required(c,"database.username"), password, ssl, c.getString("database.ssl-root-cert",""), prefix,
+        return new Options(server, group, DatabaseEngine.parse(c.getString("database.type", "postgresql")), host, integer(c,"database.port",1,65535), db, required(c,"database.username"), password, ssl, c.getString("database.ssl-root-cert",""), prefix,
             integer(c,"database.pool-size",2,64), integer(c,"database.connection-timeout-ms",1000,30000), integer(c,"database.query-timeout-seconds",1,30),
             bool(c,"sync.storage"),bool(c,"sync.armour"),bool(c,"sync.offhand"),bool(c,"sync.ender-chest"),bool(c,"sync.experience"),bool(c,"sync.selected-slot"),bool(c,"sync.health"),bool(c,"sync.hunger"),first.equals("import"),
             integer(c,"safety.login-wait-ms",1000,30000), integer(c,"safety.login-poll-ms",50,1000), pending,heartbeat,verify,stale,

@@ -22,7 +22,7 @@ public final class InventoryProbe extends JavaPlugin {
     UUID id=UUID.randomUUID();
     @Override public void onEnable(){target=Bukkit.getPluginManager().getPlugin("NetworkInventorySync");waitFor(()->Boolean.TRUE.equals(field(target,"ready")),()->{
         Fake first=new Fake(id);seed(first);enter(first,()->{
-            check(!blocked(first),"ready player frozen");first.main[7]=new ItemStack(Material.DIAMOND,32);
+            check(!blocked(first),"ready player frozen");check(inventoryReady(),"ready integration hook refused active player");first.main[7]=new ItemStack(Material.DIAMOND,32);
             leave(first,()->{Fake second=new Fake(id);second.dead=true;second.main[0]=new ItemStack(Material.STONE);enter(second,()->{
                 check(second.main[0].isSimilar(first.main[0]),"NBT sword mismatch");check(second.main[7].getAmount()==32,"latest quit snapshot lost");
                 check(second.armour[2].getType()==Material.DIAMOND_CHESTPLATE,"armour missing");check(second.hand.getType()==Material.TOTEM_OF_UNDYING,"offhand missing");
@@ -53,9 +53,9 @@ public final class InventoryProbe extends JavaPlugin {
         Bukkit.getScheduler().runTaskAsynchronously(this,()->{
             try{
                 var event=new AsyncPlayerPreLoginEvent("ProbeUser",InetAddress.getLoopbackAddress(),id,false);call("preLogin",AsyncPlayerPreLoginEvent.class,event);call("preLoginResult",AsyncPlayerPreLoginEvent.class,event);
-                check(event.getLoginResult()==AsyncPlayerPreLoginEvent.Result.ALLOWED,"prelogin denied: "+event.getKickMessage());
+                check(event.getLoginResult()==AsyncPlayerPreLoginEvent.Result.ALLOWED,"prelogin denied: "+event.getKickMessage());check(!inventoryReady(),"readiness hook allowed asynchronous access");
                 Bukkit.getScheduler().runTask(this,()->{
-                    try{check(blocked(fake),"pending player not frozen");call("join",PlayerJoinEvent.class,new PlayerJoinEvent(fake.player,Component.empty()));
+                    try{check(blocked(fake),"pending player not frozen");check(!inventoryReady(),"pending session reported ready");call("join",PlayerJoinEvent.class,new PlayerJoinEvent(fake.player,Component.empty()));check(!inventoryReady(),"loading session reported ready");
                         Item item=proxy(Item.class,(p,m,a)->defaultValue(m.getReturnType()));var drop=new PlayerDropItemEvent(fake.player,item);Bukkit.getPluginManager().callEvent(drop);check(drop.isCancelled(),"loading item drop permitted");
                         if(fake.dead)Bukkit.getScheduler().runTaskLater(this,()->{
                             try{
@@ -71,7 +71,8 @@ public final class InventoryProbe extends JavaPlugin {
             }catch(Throwable e){Bukkit.getScheduler().runTask(this,()->fail(e));}
         });
     }
-    void leave(Fake fake,Runnable done){fake.online=false;call("quit",PlayerQuitEvent.class,new PlayerQuitEvent(fake.player,Component.empty(),PlayerQuitEvent.QuitReason.DISCONNECTED));waitFor(()->session()==null,done);}
+    void leave(Fake fake,Runnable done){fake.online=false;check(!inventoryReady(),"offline session reported ready");call("quit",PlayerQuitEvent.class,new PlayerQuitEvent(fake.player,Component.empty(),PlayerQuitEvent.QuitReason.DISCONNECTED));waitFor(()->session()==null,done);}
+    boolean inventoryReady(){try{return (boolean)target.getClass().getMethod("isReady",UUID.class).invoke(target,id);}catch(Exception e){throw new RuntimeException(e);}}
     Object session(){return ((Map<?,?>)field(target,"sessions")).get(id);}
     String phase(){Object s=session();return s==null?"absent":Objects.toString(field(s,"phase"));}
     boolean blocked(Fake fake){try{Method m=target.getClass().getDeclaredMethod("blocked",Player.class);m.setAccessible(true);return (boolean)m.invoke(target,fake.player);}catch(Exception e){throw new RuntimeException(e);}}

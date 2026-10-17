@@ -1,6 +1,8 @@
 Network Inventory Sync bundles isolated copies of:
 HikariCP 7.1.0 — Brett Wooldridge and contributors — Apache License 2.0.
 PostgreSQL JDBC 42.7.14 — PostgreSQL Global Development Group and contributors — BSD 2-clause.
+MariaDB Connector/J 3.5.10 — MariaDB Corporation and contributors — LGPL 2.1 or later.
+MariaDB source is distributed alongside release JARs; see THIRD_PARTY.md for rebuilding/relinking.
 Checker Framework qualifier annotations — Checker Framework developers — MIT.
 These are relocated under dev.flint.invsync.lib; full licenses accompany this notice.
 Paper, Adventure, SLF4J and test libraries are not bundled.

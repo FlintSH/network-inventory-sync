@@ -13,4 +13,19 @@ class OptionsTest {
         assertEquals(first.profile(),second.profile());assertFalse(second.toString().contains("secret"));c.set("sync.armour",false);assertNotEquals(first.profile(),Options.read(c).profile());
     }
     @Test void digestIsStableAndChangesWithPayload(){assertEquals(64,Options.digest(new byte[]{1}).length());assertNotEquals(Options.digest(new byte[]{1}),Options.digest(new byte[]{2}));}
+    @Test void oldConfigurationKeepsPostgresqlAndBothEnginesHaveExplicitTlsMappings(){
+        var c=Fixtures.configuration();c.set("server-id","first");c.set("database.type",null);
+        Options postgres=Options.read(c);assertEquals(DatabaseEngine.POSTGRESQL,postgres.engine());
+        c.set("database.type","mariadb");c.set("database.port",3306);c.set("database.ssl-root-cert","/tmp/ca.pem");
+        Options maria=Options.read(c);assertEquals(postgres.profile(),maria.profile());
+        for(String ssl:java.util.List.of("disable","require","verify-ca","verify-full")){
+            c.set("database.ssl-mode",ssl);var options=Options.read(c);var pool=new com.zaxxer.hikari.HikariConfig();options.engine().configure(pool,options);
+            assertEquals("jdbc:mariadb://127.0.0.1:3306/invsync",pool.getJdbcUrl());
+            assertEquals(ssl.equals("require")?"trust":ssl,pool.getDataSourceProperties().getProperty("sslMode"));
+            assertEquals("/tmp/ca.pem",pool.getDataSourceProperties().getProperty("serverSslCert"));
+            assertEquals("3000",pool.getDataSourceProperties().getProperty("connectTimeout"));
+            assertEquals("7000",pool.getDataSourceProperties().getProperty("socketTimeout"));
+        }
+        c.set("database.type","mysql");assertThrows(IllegalArgumentException.class,()->Options.read(c));
+    }
 }
