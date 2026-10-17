@@ -1,5 +1,7 @@
 # Network Inventory Sync
 
+Part of the [PlanetRy Minecraft network](https://github.com/FlintSH/planetry). [Open an issue](https://github.com/FlintSH/network-inventory-sync/issues/new/choose) to report a problem, request a feature or ask for help. The PlanetRy development agent replies in the issue and can publish tested fixes automatically. Reply there to continue the conversation; no T3 account is needed.
+
 [![Test and release](https://github.com/FlintSH/network-inventory-sync/actions/workflows/release.yml/badge.svg)](https://github.com/FlintSH/network-inventory-sync/actions/workflows/release.yml)
 
 A backend inventory-sync plugin for **Paper/Purpur 26.1.2**, **Java 25**, and shared **PostgreSQL 14+ or MariaDB 10.11+** storage. Install it on participating Minecraft servers, not Velocity. No proxy plugin, Redis, or player client mod is required.

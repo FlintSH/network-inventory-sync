@@ -9,3 +9,8 @@ and released artifacts before reporting delivery complete.
 Use an isolated task worktree, preserve unrelated changes, and follow the
 repository's documented database tests and Paper runtime probe. Direct delivery
 does not authorize installing plugins on the production Minecraft network.
+
+PlanetRy issue tasks also read the shared system context and issue-agent
+instructions in https://github.com/FlintSH/planetry. Keep questions and results
+in the assigned GitHub issue through its marked reply helper, so follow-up
+comments return to the same T3 conversation.
